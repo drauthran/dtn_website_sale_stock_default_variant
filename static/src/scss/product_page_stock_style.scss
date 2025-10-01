@@ -1,0 +1,18 @@
+/*
+ * "Усиленные" стили для вариантов товара, которых нет в наличии.
+ * !important гарантирует, что эти правила будут применены.
+ */
+li.js_attribute_value.dtn-out-of-stock {
+    // Делаем вкладку полупрозрачной, чтобы она выглядела неактивной.
+    opacity: 0.5 !important;
+    // Можно добавить серый фон, чтобы было еще заметнее
+    background-color: #f0f0f0 !important;
+    border-color: #ddd !important;
+
+    // Перечеркиваем текст внутри вкладки.
+    .radio_input_value span {
+        text-decoration: line-through !important;
+        text-decoration-thickness: 1.5px !important;
+        color: #6c757d !important; // Делаем текст серым
+    }
+}

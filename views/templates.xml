@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="product_stock_info_dtn" inherit_id="website_sale.product" name="DTN Product Stock Info" priority="1000">
+        
+        <xpath expr="//div[1]" position="inside">
+            
+            <span t-if="dtn_stock_map_json" id="dtn-stock-data" t-att-data-stock-map="dtn_stock_map_json" class="d-none"/>
+
+            <style type="text/css">
+li.js_attribute_value.dtn-out-of-stock {
+    opacity: 0.5 !important;
+    background-color: #f8f9fa !important;
+    border-color: #dee2e6 !important;
+}
+li.js_attribute_value.dtn-out-of-stock .radio_input_value span {
+    text-decoration: line-through !important;
+    color: #6c757d !important;
+}
+            </style>
+
+            <script type="text/javascript" id="dtn-stock-script">
+document.addEventListener('DOMContentLoaded', function () {
+    const dataEl = document.getElementById('dtn-stock-data');
+    const productContainer = document.querySelector('.oe_website_sale');
+
+    if (!dataEl || !productContainer) {
+        return;
+    }
+    const stockMap = JSON.parse(dataEl.dataset.stockMap || '{}');
+
+    function applyStyles() {
+        const variantPills = productContainer.querySelectorAll('.js_attribute_value');
+        variantPills.forEach(pill => {
+            const input = pill.querySelector('input');
+            if (input) {
+                const ptav_id = input.value;
+                if (stockMap[ptav_id] === false) {
+                    pill.classList.add('dtn-out-of-stock');
+                } else {
+                    pill.classList.remove('dtn-out-of-stock');
+                }
+            }
+        });
+    }
+
+    applyStyles();
+
+    const observer = new MutationObserver(applyStyles);
+    observer.observe(productContainer, {
+        childList: true,
+        subtree: true,
+    });
+});
+            </script>
+        </xpath>
+    </template>
+</odoo>
