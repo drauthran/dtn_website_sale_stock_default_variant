@@ -1,79 +1,102 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="product_stock_info_dtn" inherit_id="website_sale.product" name="DTN Product Stock Info" priority="1000">
-        
         <xpath expr="//div[1]" position="inside">
-            
             <span t-if="dtn_stock_map_json" id="dtn-stock-data" t-att-data-stock-map="dtn_stock_map_json" class="d-none"/>
-
             <style type="text/css">
-li.js_attribute_value.dtn-out-of-stock {
-    opacity: 0.5 !important;
-    background-color: #f8f9fa !important;
-    border-color: #dee2e6 !important;
-}
-li.js_attribute_value.dtn-out-of-stock .radio_input_value span {
-    text-decoration: line-through !important;
-    color: #6c757d !important;
-}
-li.js_attribute_value.dtn-out-of-stock.active {
-    opacity: 1 !important;
-}
-li.js_attribute_value.dtn-out-of-stock.active .radio_input_value span {
-    text-decoration: none !important;
-}
+li.js_attribute_value.dtn-out-of-stock { opacity: 0.5 !important; background-color: #f8f9fa !important; border-color: #dee2e6 !important; }
+li.js_attribute_value.dtn-out-of-stock .radio_input_value span { text-decoration: line-through !important; color: #6c757d !important; }
+li.js_attribute_value.dtn-out-of-stock.active { opacity: 1 !important; }
+li.js_attribute_value.dtn-out-of-stock.active .radio_input_value span { text-decoration: none !important; }
             </style>
-
             <script type="text/javascript" id="dtn-stock-script">
+//<![CDATA[
 document.addEventListener('DOMContentLoaded', function () {
     const dataEl = document.getElementById('dtn-stock-data');
     const productContainer = document.querySelector('.oe_website_sale');
+    if (!dataEl || !productContainer) { return; }
 
-    if (!dataEl || !productContainer) {
-        return;
-    }
     const stockMap = JSON.parse(dataEl.dataset.stockMap || '{}');
+    // --- Жестко прописанная фраза ---
+    const outOfStockText = 'Немає на складі';
+
+    let isInitialLoad = true;
 
     function applyStyles() {
-        const variantPills = productContainer.querySelectorAll('.js_attribute_value');
+        const variantPills = productContainer.querySelectorAll('li.js_attribute_value');
         variantPills.forEach(pill => {
             const input = pill.querySelector('input');
-            if (input) {
+            if(input) {
                 const ptav_id = input.value;
+                const hasClass = pill.classList.contains('dtn-out-of-stock');
                 if (stockMap[ptav_id] === false) {
-                    pill.classList.add('dtn-out-of-stock');
+                    if (!hasClass) pill.classList.add('dtn-out-of-stock');
                 } else {
-                    pill.classList.remove('dtn-out-of-stock');
+                    if (hasClass) pill.classList.remove('dtn-out-of-stock');
+                }
+            }
+        });
+        const variantSelects = productContainer.querySelectorAll('select.js_variant_change');
+        variantSelects.forEach(select => {
+            const options = select.options;
+            for (const option of options) {
+                const ptav_id = option.value;
+                const originalText = option.dataset.originalText || option.text.replace(/\s\(.*\)$/, '');
+                if (!option.dataset.originalText) { option.dataset.originalText = originalText; }
+                let newText;
+                if (stockMap[ptav_id] === false) {
+                    newText = `${originalText} (${outOfStockText})`;
+                } else {
+                    newText = originalText;
+                }
+                if (option.text !== newText) {
+                    option.text = newText;
                 }
             }
         });
     }
 
     function activateFirstAvailableVariant() {
-        const variantInputs = productContainer.querySelectorAll('.js_attribute_value input[type="radio"]');
-        let firstAvailableInput = null;
-        for (const input of variantInputs) {
-            const ptav_id = input.value;
-            if (stockMap[ptav_id] === true) {
-                firstAvailableInput = input;
+        let firstAvailableValue = null;
+        const allOptions = productContainer.querySelectorAll('input[name^="ptal-"], option');
+        for (const option of allOptions) {
+            if (stockMap[option.value] === true) {
+                firstAvailableValue = option.value;
                 break;
             }
         }
-        // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
-        if (firstAvailableInput &amp;&amp; !firstAvailableInput.checked) {
-            firstAvailableInput.click();
+        if (!firstAvailableValue) { return; }
+        const radioToActivate = productContainer.querySelector(`input[name^="ptal-"][value="${firstAvailableValue}"]`);
+        if (radioToActivate && !radioToActivate.checked) {
+            radioToActivate.click();
+            return;
+        }
+        const selectToActivate = productContainer.querySelector('select.js_variant_change');
+        if (selectToActivate && selectToActivate.value !== firstAvailableValue) {
+            if (selectToActivate.querySelector(`option[value="${firstAvailableValue}"]`)) {
+                selectToActivate.value = firstAvailableValue;
+                selectToActivate.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         }
     }
     
-    applyStyles();
-    activateFirstAvailableVariant();
-    
-    const observer = new MutationObserver(applyStyles);
+    const observer = new MutationObserver((mutations, obs) => {
+        if (isInitialLoad) {
+            applyStyles();
+            activateFirstAvailableVariant();
+            isInitialLoad = false;
+        } else {
+            applyStyles();
+        }
+    });
+
     observer.observe(productContainer, {
         childList: true,
         subtree: true,
+        attributes: true,
     });
 });
+//]]>
             </script>
         </xpath>
     </template>
