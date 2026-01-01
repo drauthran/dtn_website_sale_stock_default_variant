@@ -5,33 +5,32 @@
             <input type="hidden" id="dtn_stock_data" t-att-value="dtn_stock_map_json"/>
             
             <style>
-                /* Основной контейнер отсутствующего варианта */
+                /* Стиль для відсутніх варіантів */
                 .dtn-out-of-stock {
-                    opacity: 0.6 !important; /* Делаем элемент бледным */
+                    opacity: 0.6 !important;
                 }
                 
-                /* Стили конкретно для текста внутри лейбла */
+                /* Текст всередині label (Radio/Pills) */
                 .dtn-out-of-stock label, 
                 .dtn-out-of-stock .form-check-label, 
                 .dtn-out-of-stock span.attribute_name {
-                    text-decoration: line-through !important; /* Перечеркивание */
-                    text-decoration-color: #dc3545 !important; /* Цвет линии (красноватый для наглядности) или #999 для серого */
-                    text-decoration-thickness: 2px !important; /* Толщина линии */
-                    color: #adb5bd !important; /* Цвет самого текста (серый) */
-                    cursor: pointer !important; /* Курсор руки */
+                    text-decoration: line-through !important;
+                    text-decoration-color: #dc3545 !important;
+                    text-decoration-thickness: 2px !important;
+                    color: #adb5bd !important;
+                    cursor: pointer !important;
                 }
                 
-                /* Убираем перечеркивание с самой радио-кнопки/чекбокса, если оно туда попало */
+                /* Скидаємо стилі для самого input, щоб не було артефактів */
                 .dtn-out-of-stock input {
                     text-decoration: none !important;
                     cursor: pointer !important;
                 }
 
-                /* Специфично для выпадающих списков (Select) */
+                /* Специфічно для випадаючих списків (Select options) */
                 option.dtn-out-of-stock {
                     color: #adb5bd;
-                    font-style: italic;
-                    /* text-decoration в select/option работает не во всех браузерах, но цвет сработает точно */
+                    /* text-decoration в option працює не всюди, але колір точно спрацює */
                 }
             </style>
         </xpath>
@@ -56,17 +55,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function applyStockStyles() {
         // 1. SELECT (випадаючі списки)
-        const options = productContainer.querySelectorAll('select.js_variant_change option');
-        options.forEach(opt => {
-            const valId = parseInt(opt.value);
-            if (valId && !stockMap[valId]) {
-                if (!opt.text.includes('(Немає)')) {
-                    opt.text = opt.text + ' (Немає)';
+        const selects = productContainer.querySelectorAll('select.js_variant_change');
+        selects.forEach(select => {
+            // Отримуємо всі option всередині селекта
+            const options = select.querySelectorAll('option');
+            options.forEach(opt => {
+                const valId = parseInt(opt.value);
+                // Пропускаємо пусті значення (наприклад placeholder)
+                if (valId && !stockMap[valId]) {
+                    // Додаємо текст (Немає), якщо його ще немає
+                    if (!opt.text.includes('(Немає)')) {
+                        opt.text = opt.text + ' (Немає)';
+                    }
+                    opt.classList.add('dtn-out-of-stock');
+                    // Розблоковуємо, щоб можна було вибрати
+                    opt.disabled = false;
+                    opt.removeAttribute('disabled');
                 }
-                opt.classList.add('dtn-out-of-stock');
-                opt.disabled = false;
-                opt.removeAttribute('disabled');
-            }
+            });
         });
 
         // 2. RADIO / COLORS / PILLS (кнопки)
@@ -75,11 +81,8 @@ document.addEventListener('DOMContentLoaded', function () {
             const valId = parseInt(input.value) || parseInt(input.getAttribute('data-value_id'));
             
             if (valId) {
-                // Шукаємо найближчий контейнер для стилізації
-                // В Odoo 18 це часто label або div.form-check
                 const parentElement = input.closest('.list-inline-item') || input.closest('.form-check') || input.closest('label');
                 
-                // Скидання стандартного блокування Odoo
                 input.disabled = false;
                 input.classList.remove('disabled');
                 if (parentElement) parentElement.classList.remove('disabled');
@@ -87,7 +90,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!stockMap[valId]) {
                     if (parentElement) {
                         parentElement.classList.add('dtn-out-of-stock');
-                        parentElement.title = "Немає в наявності, але можна вибрати для передзамовлення";
+                        parentElement.title = "Немає в наявності, але можна вибрати";
                     }
                 } else {
                     if (parentElement) {
@@ -98,10 +101,12 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // Функція автоматичного перемикання, якщо вибрано пустий варіант
     function checkAndSwitchIfEmpty() {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('product_id')) return; 
 
+        // А. Логіка для RADIO кнопок
         const checkedInput = productContainer.querySelector('input.js_variant_change:checked, input[name^="attribute_"]:checked');
         if (checkedInput) {
              const valId = parseInt(checkedInput.value) || parseInt(checkedInput.getAttribute('data-value_id'));
@@ -109,18 +114,41 @@ document.addEventListener('DOMContentLoaded', function () {
                  const allInputs = productContainer.querySelectorAll('input.js_variant_change, input[name^="attribute_"]');
                  for (let input of allInputs) {
                      const nextId = parseInt(input.value) || parseInt(input.getAttribute('data-value_id'));
-                     if (nextId && stockMap[nextId]) {
+                     // Перевіряємо, чи належить цей input до того ж атрибуту (name)
+                     if (input.name === checkedInput.name && nextId && stockMap[nextId]) {
                          input.click();
-                         break;
+                         return; // Виходимо після перемикання
                      }
                  }
              }
         }
+
+        // Б. Логіка для SELECT (Випадаючих списків) - ДОДАНО
+        const selects = productContainer.querySelectorAll('select.js_variant_change');
+        selects.forEach(select => {
+            const currentVal = parseInt(select.value);
+            // Якщо поточне вибране значення відсутнє на складі
+            if (currentVal && !stockMap[currentVal]) {
+                // Шукаємо першу опцію в цьому ж селекті, яка є в наявності
+                for (let i = 0; i < select.options.length; i++) {
+                    const opt = select.options[i];
+                    const optVal = parseInt(opt.value);
+                    if (optVal && stockMap[optVal]) {
+                        // 1. Змінюємо значення
+                        select.value = optVal;
+                        // 2. Примусово викликаємо подію change, щоб Odoo оновила сторінку
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                        break; // Зупиняємо цикл після першої знайденої заміни
+                    }
+                }
+            }
+        });
     }
 
     applyStockStyles();
     
     if (isInitialLoad) {
+        // Невелика затримка, щоб DOM повністю сформувався
         setTimeout(checkAndSwitchIfEmpty, 200); 
         isInitialLoad = false;
     }
