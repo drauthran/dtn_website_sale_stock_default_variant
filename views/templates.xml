@@ -1,100 +1,148 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <template id="product_stock_info_dtn" inherit_id="website_sale.product" name="DTN Product Stock Info" priority="1000">
-        <xpath expr="//div[1]" position="inside">
-            <span t-if="dtn_stock_map_json" id="dtn-stock-data" t-att-data-stock-map="dtn_stock_map_json" class="d-none"/>
-            <style type="text/css">
-li.js_attribute_value.dtn-out-of-stock { opacity: 0.5 !important; background-color: #f8f9fa !important; border-color: #dee2e6 !important; }
-li.js_attribute_value.dtn-out-of-stock .radio_input_value span { text-decoration: line-through !important; color: #6c757d !important; }
-li.js_attribute_value.dtn-out-of-stock.active { opacity: 1 !important; }
-li.js_attribute_value.dtn-out-of-stock.active .radio_input_value span { text-decoration: none !important; }
+    <template id="dtn_product_variants_stock_check" inherit_id="website_sale.product" name="DTN Stock Check Script">
+        <xpath expr="//div[@id='product_details']" position="before">
+            <input type="hidden" id="dtn_stock_data" t-att-value="dtn_stock_map_json"/>
+            
+            <style>
+                /* Основной контейнер отсутствующего варианта */
+                .dtn-out-of-stock {
+                    opacity: 0.6 !important; /* Делаем элемент бледным */
+                }
+                
+                /* Стили конкретно для текста внутри лейбла */
+                .dtn-out-of-stock label, 
+                .dtn-out-of-stock .form-check-label, 
+                .dtn-out-of-stock span.attribute_name {
+                    text-decoration: line-through !important; /* Перечеркивание */
+                    text-decoration-color: #dc3545 !important; /* Цвет линии (красноватый для наглядности) или #999 для серого */
+                    text-decoration-thickness: 2px !important; /* Толщина линии */
+                    color: #adb5bd !important; /* Цвет самого текста (серый) */
+                    cursor: pointer !important; /* Курсор руки */
+                }
+                
+                /* Убираем перечеркивание с самой радио-кнопки/чекбокса, если оно туда попало */
+                .dtn-out-of-stock input {
+                    text-decoration: none !important;
+                    cursor: pointer !important;
+                }
+
+                /* Специфично для выпадающих списков (Select) */
+                option.dtn-out-of-stock {
+                    color: #adb5bd;
+                    font-style: italic;
+                    /* text-decoration в select/option работает не во всех браузерах, но цвет сработает точно */
+                }
             </style>
-            <script type="text/javascript" id="dtn-stock-script">
+        </xpath>
+
+        <xpath expr="//div[@id='product_details']" position="inside">
+            <script type="text/javascript">
 //<![CDATA[
 document.addEventListener('DOMContentLoaded', function () {
-    const dataEl = document.getElementById('dtn-stock-data');
-    const productContainer = document.querySelector('.oe_website_sale');
-    if (!dataEl || !productContainer) { return; }
+    const stockDataInput = document.getElementById('dtn_stock_data');
+    if (!stockDataInput) return;
 
-    const stockMap = JSON.parse(dataEl.dataset.stockMap || '{}');
-    // --- Жестко прописанная фраза ---
-    const outOfStockText = 'Немає на складі';
+    let stockMap = {};
+    try {
+        stockMap = JSON.parse(stockDataInput.value);
+    } catch (e) {
+        console.error('DTN Error parsing stock JSON:', e);
+        return;
+    }
 
+    const productContainer = document.getElementById('product_details');
     let isInitialLoad = true;
 
-    function applyStyles() {
-        const variantPills = productContainer.querySelectorAll('li.js_attribute_value');
-        variantPills.forEach(pill => {
-            const input = pill.querySelector('input');
-            if(input) {
-                const ptav_id = input.value;
-                const hasClass = pill.classList.contains('dtn-out-of-stock');
-                if (stockMap[ptav_id] === false) {
-                    if (!hasClass) pill.classList.add('dtn-out-of-stock');
-                } else {
-                    if (hasClass) pill.classList.remove('dtn-out-of-stock');
+    function applyStockStyles() {
+        // 1. SELECT (випадаючі списки)
+        const options = productContainer.querySelectorAll('select.js_variant_change option');
+        options.forEach(opt => {
+            const valId = parseInt(opt.value);
+            if (valId && !stockMap[valId]) {
+                if (!opt.text.includes('(Немає)')) {
+                    opt.text = opt.text + ' (Немає)';
                 }
+                opt.classList.add('dtn-out-of-stock');
+                opt.disabled = false;
+                opt.removeAttribute('disabled');
             }
         });
-        const variantSelects = productContainer.querySelectorAll('select.js_variant_change');
-        variantSelects.forEach(select => {
-            const options = select.options;
-            for (const option of options) {
-                const ptav_id = option.value;
-                const originalText = option.dataset.originalText || option.text.replace(/\s\(.*\)$/, '');
-                if (!option.dataset.originalText) { option.dataset.originalText = originalText; }
-                let newText;
-                if (stockMap[ptav_id] === false) {
-                    newText = `${originalText} (${outOfStockText})`;
+
+        // 2. RADIO / COLORS / PILLS (кнопки)
+        const inputs = productContainer.querySelectorAll('input.js_variant_change, input[name^="attribute_"]');
+        inputs.forEach(input => {
+            const valId = parseInt(input.value) || parseInt(input.getAttribute('data-value_id'));
+            
+            if (valId) {
+                // Шукаємо найближчий контейнер для стилізації
+                // В Odoo 18 це часто label або div.form-check
+                const parentElement = input.closest('.list-inline-item') || input.closest('.form-check') || input.closest('label');
+                
+                // Скидання стандартного блокування Odoo
+                input.disabled = false;
+                input.classList.remove('disabled');
+                if (parentElement) parentElement.classList.remove('disabled');
+
+                if (!stockMap[valId]) {
+                    if (parentElement) {
+                        parentElement.classList.add('dtn-out-of-stock');
+                        parentElement.title = "Немає в наявності, але можна вибрати для передзамовлення";
+                    }
                 } else {
-                    newText = originalText;
-                }
-                if (option.text !== newText) {
-                    option.text = newText;
+                    if (parentElement) {
+                        parentElement.classList.remove('dtn-out-of-stock');
+                    }
                 }
             }
         });
     }
 
-    function activateFirstAvailableVariant() {
-        let firstAvailableValue = null;
-        const allOptions = productContainer.querySelectorAll('input[name^="ptal-"], option');
-        for (const option of allOptions) {
-            if (stockMap[option.value] === true) {
-                firstAvailableValue = option.value;
-                break;
-            }
-        }
-        if (!firstAvailableValue) { return; }
-        const radioToActivate = productContainer.querySelector(`input[name^="ptal-"][value="${firstAvailableValue}"]`);
-        if (radioToActivate && !radioToActivate.checked) {
-            radioToActivate.click();
-            return;
-        }
-        const selectToActivate = productContainer.querySelector('select.js_variant_change');
-        if (selectToActivate && selectToActivate.value !== firstAvailableValue) {
-            if (selectToActivate.querySelector(`option[value="${firstAvailableValue}"]`)) {
-                selectToActivate.value = firstAvailableValue;
-                selectToActivate.dispatchEvent(new Event('change', { bubbles: true }));
-            }
+    function checkAndSwitchIfEmpty() {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('product_id')) return; 
+
+        const checkedInput = productContainer.querySelector('input.js_variant_change:checked, input[name^="attribute_"]:checked');
+        if (checkedInput) {
+             const valId = parseInt(checkedInput.value) || parseInt(checkedInput.getAttribute('data-value_id'));
+             if (valId && !stockMap[valId]) {
+                 const allInputs = productContainer.querySelectorAll('input.js_variant_change, input[name^="attribute_"]');
+                 for (let input of allInputs) {
+                     const nextId = parseInt(input.value) || parseInt(input.getAttribute('data-value_id'));
+                     if (nextId && stockMap[nextId]) {
+                         input.click();
+                         break;
+                     }
+                 }
+             }
         }
     }
+
+    applyStockStyles();
     
-    const observer = new MutationObserver((mutations, obs) => {
-        if (isInitialLoad) {
-            applyStyles();
-            activateFirstAvailableVariant();
-            isInitialLoad = false;
-        } else {
-            applyStyles();
+    if (isInitialLoad) {
+        setTimeout(checkAndSwitchIfEmpty, 200); 
+        isInitialLoad = false;
+    }
+
+    const observer = new MutationObserver((mutations) => {
+        let shouldUpdate = false;
+        mutations.forEach(mutation => {
+            if (mutation.type === 'childList' && mutation.target.id !== 'product_details') {
+                shouldUpdate = true;
+            }
+        });
+        if (shouldUpdate) {
+           applyStockStyles();
         }
     });
 
-    observer.observe(productContainer, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-    });
+    if (productContainer) {
+        observer.observe(productContainer, {
+            childList: true,
+            subtree: true
+        });
+    }
 });
 //]]>
             </script>
